@@ -7,14 +7,15 @@ package main
 import (
 	"flag"
 	"log"
+	"os/user"
 
+	"github.com/lionkov/ninep"
 	"github.com/lionkov/ninep/srv/ufs"
 )
 
 var (
 	debug = flag.Int("d", 0, "print debug messages")
 	addr = flag.String("addr", ":5640", "network address")
-	user = flag.String("user", "", "user name")
 )
 
 func main() {
@@ -24,12 +25,14 @@ func main() {
 	ufs.Id = "ufs"
 	ufs.Debuglevel = *debug
 	ufs.Start(ufs)
-	if *user != "" {
-		u := ufs.Upool.Uname2User(*user)
-		if u == nil {
-			log.Printf("Warning: Adding %v failed", *user)
-		}
+
+	u, uerr := user.Current()
+	if uerr != nil {
+		log.Fatalln(uerr)
 	}
+	u.Username = "glenda"
+	u.HomeDir = "/usr/glenda"
+	ninep.OsUsers.Simulate(u)
 
 	err := ufs.StartNetListener("tcp", *addr)
 	if err != nil {

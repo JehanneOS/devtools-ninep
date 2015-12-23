@@ -5,6 +5,7 @@
 package ninep
 
 import (
+	"errors"
 	"os/user"
 	"strconv"
 	"sync"
@@ -19,6 +20,7 @@ type osUser struct {
 }
 
 type osUsers struct {
+	simulating *osUser
 	groups map[int]*osGroup
 	sync.Mutex
 }
@@ -48,6 +50,7 @@ func (g *osGroup) Members() []User { return nil }
 func initOsusers() {
 	OsUsers = new(osUsers)
 	OsUsers.groups = make(map[int]*osGroup)
+	OsUsers.simulating = nil
 }
 
 func newUser(u *user.User) *osUser {
@@ -60,6 +63,17 @@ func newUser(u *user.User) *osUser {
 	return &osUser{u, uid, gid}
 }
 
+func (up *osUsers) Simulate(u *user.User) error {
+	once.Do(initOsusers)
+	_, err := user.Lookup(u.Username)
+	if err != nil {
+		OsUsers.simulating = newUser(u)
+		return nil
+	}
+	return errors.New("cannot simulate an existing user.")
+}
+
+
 func (up *osUsers) Uid2User(uid int) User {
 	u, err := user.LookupId(strconv.Itoa(uid))
 	if err != nil {
@@ -69,6 +83,10 @@ func (up *osUsers) Uid2User(uid int) User {
 }
 
 func (up *osUsers) Uname2User(uname string) User {
+	once.Do(initOsusers)
+	if OsUsers.simulating != nil && uname == OsUsers.simulating.Username {
+		return OsUsers.simulating
+	}
 	u, err := user.Lookup(uname)
 	if err != nil {
 		return nil
