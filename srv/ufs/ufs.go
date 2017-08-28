@@ -208,7 +208,8 @@ func dir2Dir(s string, d os.FileInfo, dotu bool, upool ninep.Users) (*ninep.Dir,
 		return &dir.Dir, nil
 	}
 
-	unixUid := int(sysMode.Uid)
+	u := ninep.OsUsers.Uid2User(int(sysMode.Uid))
+	unixUid := int(u.Id())
 	unixGid := int(sysMode.Gid)
 	dir.Uid = strconv.Itoa(unixUid)
 	dir.Gid = strconv.Itoa(unixGid)
@@ -216,10 +217,7 @@ func dir2Dir(s string, d os.FileInfo, dotu bool, upool ninep.Users) (*ninep.Dir,
 
 	// BUG(akumar): LookupId will never find names for
 	// groups, as it only operates on user ids.
-	u, err := user.LookupId(dir.Uid)
-	if err == nil {
-		dir.Uid = u.Username
-	}
+	dir.Uid = u.Name()
 	g, err := user.LookupId(dir.Gid)
 	if err == nil {
 		dir.Gid = g.Username

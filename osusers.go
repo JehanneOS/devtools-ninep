@@ -9,9 +9,8 @@ import (
 	"os/user"
 	"strconv"
 	"sync"
+	"fmt"
 )
-
-var once sync.Once
 
 type osUser struct {
 	*user.User
@@ -28,6 +27,12 @@ type osUsers struct {
 // Simple Users implementation that defers to os/user and fakes
 // looking up groups by gid only.
 var OsUsers *osUsers
+
+func init() {
+	OsUsers = new(osUsers)
+	OsUsers.groups = make(map[int]*osGroup)
+	OsUsers.simulating = nil
+}
 
 func (u *osUser) Name() string { return u.Username }
 
@@ -47,12 +52,6 @@ func (g *osGroup) Id() int { return g.gid }
 
 func (g *osGroup) Members() []User { return nil }
 
-func initOsusers() {
-	OsUsers = new(osUsers)
-	OsUsers.groups = make(map[int]*osGroup)
-	OsUsers.simulating = nil
-}
-
 func newUser(u *user.User) *osUser {
 	uid, uerr := strconv.Atoi(u.Uid)
 	gid, gerr := strconv.Atoi(u.Gid)
@@ -64,10 +63,10 @@ func newUser(u *user.User) *osUser {
 }
 
 func (up *osUsers) Simulate(u *user.User) error {
-	once.Do(initOsusers)
 	_, err := user.Lookup(u.Username)
 	if err != nil {
 		OsUsers.simulating = newUser(u)
+		fmt.Printf("Simulating Os User: %#v\n", OsUsers.simulating);
 		return nil
 	}
 	return errors.New("cannot simulate an existing user.")
@@ -75,6 +74,9 @@ func (up *osUsers) Simulate(u *user.User) error {
 
 
 func (up *osUsers) Uid2User(uid int) User {
+	if OsUsers.simulating != nil && uid == OsUsers.simulating.uid {
+		return OsUsers.simulating
+	}
 	u, err := user.LookupId(strconv.Itoa(uid))
 	if err != nil {
 		return nil
@@ -83,7 +85,6 @@ func (up *osUsers) Uid2User(uid int) User {
 }
 
 func (up *osUsers) Uname2User(uname string) User {
-	once.Do(initOsusers)
 	if OsUsers.simulating != nil && uname == OsUsers.simulating.Username {
 		return OsUsers.simulating
 	}
@@ -95,18 +96,17 @@ func (up *osUsers) Uname2User(uname string) User {
 }
 
 func (up *osUsers) Gid2Group(gid int) Group {
-	once.Do(initOsusers)
-	OsUsers.Lock()
-	group, present := OsUsers.groups[gid]
+	up.Lock()
+	group, present := up.groups[gid]
 	if present {
-		OsUsers.Unlock()
+		up.Unlock()
 		return group
 	}
 
 	group = new(osGroup)
 	group.gid = gid
-	OsUsers.groups[gid] = group
-	OsUsers.Unlock()
+	up.groups[gid] = group
+	up.Unlock()
 	return group
 }
 

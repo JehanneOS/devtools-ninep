@@ -49,6 +49,31 @@ func (srv *Srv) version(req *Req) {
 	req.RespondRversion(conn.Msize, ver)
 }
 
+func (srv *Srv) getUser(req *Req) ninep.User {
+	tc := req.Tc
+	conn := req.Conn
+
+	var user ninep.User = nil
+
+	if conn.Dotu {
+		// from the 9p2000.u specification:
+		// A numeric uname field has been added to the attach and auth
+		// messages in order to provide hints to map a string to a
+		// numeric id if such a facility is not available. The numeric
+		// uname should be given preference over the uname string
+		// unless n_uname is unspecified (~0).
+		if tc.Unamenum != ninep.NOUID {
+			user = srv.Upool.Uid2User(int(tc.Unamenum))
+		} else if tc.Uname != "" {
+			user = srv.Upool.Uname2User(tc.Uname)
+		}
+	} else if tc.Uname != "" {
+		user = srv.Upool.Uname2User(tc.Uname)
+	}
+
+	return user
+}
+
 func (srv *Srv) auth(req *Req) {
 	tc := req.Tc
 	conn := req.Conn
@@ -64,13 +89,7 @@ func (srv *Srv) auth(req *Req) {
 		return
 	}
 
-	var user ninep.User = nil
-	if tc.Unamenum != ninep.NOUID || conn.Dotu {
-		user = srv.Upool.Uid2User(int(tc.Unamenum))
-	} else if tc.Uname != "" {
-		user = srv.Upool.Uname2User(tc.Uname)
-	}
-
+	user := srv.getUser(req)
 	if user == nil {
 		req.RespondError(Enouser)
 		return
@@ -120,13 +139,7 @@ func (srv *Srv) attach(req *Req) {
 		}
 	}
 
-	var user ninep.User = nil
-	if tc.Unamenum != ninep.NOUID || conn.Dotu {
-		user = srv.Upool.Uid2User(int(tc.Unamenum))
-	} else if tc.Uname != "" {
-		user = srv.Upool.Uname2User(tc.Uname)
-	}
-
+	user := srv.getUser(req)
 	if user == nil {
 		req.RespondError(Enouser)
 		return
@@ -334,6 +347,11 @@ func (srv *Srv) read(req *Req) {
 			req.RespondError(Enotimpl)
 		}
 
+		return
+	}
+
+	if !fid.opened || (fid.Omode&3) == ninep.OWRITE {
+		req.RespondError(Ebaduse)
 		return
 	}
 
